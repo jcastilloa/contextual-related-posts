@@ -1,4 +1,6 @@
 ﻿[![Build Status](https://travis-ci.org/WebberZone/contextual-related-posts.svg?branch=master)](https://travis-ci.org/WebberZone/contextual-related-posts)
+﻿
+﻿Forked and integrated with [ElasticPress](https://github.com/10up/ElasticPress)
 
 # Contextual Related Posts
 

@@ -236,7 +236,8 @@ function crp_save_meta_box( $post_id ) {
 	$crp_post_meta = apply_filters( 'crp_post_meta', $crp_post_meta, $post_id );
 
     /**** Now we can start saving ****/
-	if ( empty( array_filter( $crp_post_meta ) ) ) {	// Checks if all the array items are 0 or empty
+
+	if ( strlen(implode($crp_post_meta)) == 0)  {	// Checks if all the array items are 0 or empty
 		delete_post_meta( $post_id, 'crp_post_meta' );	// Delete the post meta if no options are set
 	} else {
 		update_post_meta( $post_id, 'crp_post_meta', $crp_post_meta );

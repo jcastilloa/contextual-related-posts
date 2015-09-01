@@ -117,21 +117,26 @@ function get_crp( $args = array() ) {
 	$exclude_categories = explode( ',', $args['exclude_categories'] );
 
 	// Retrieve the list of posts
-	$results = get_crp_posts_id( array_merge( $args, array(
+	/*$results = get_crp_posts_id( array_merge( $args, array(
 		'postid' => $post->ID,
 		'strict_limit' => TRUE,
-	) ) );
+	) ) );*/
+
+    $results = get_elastic_crp_posts( array_merge( $args, array(
+        'postid' => $post->ID,
+        'strict_limit' => TRUE,
+    ) ) );
 
 	$output = ( is_singular() ) ? '<div id="crp_related" class="crp_related' . ( $args['is_widget'] ? '_widget' : '' ) . '">' : '<div class="crp_related' . ( $args['is_widget'] ? '_widget' : '' ) . '">';
 
-	if ( $results ) {
+	if ( is_array($results)) {
 		$loop_counter = 0;
 
 		$output .= crp_heading_title( $args );
 
 		$output .= crp_before_list( $args );
 
-		foreach ( $results as $result ) {
+		foreach ( $results as $el_result ) {
 
 			/**
 			 * Filter the post ID for each result. Allows a custom function to hook in and change the ID if needed.
@@ -140,7 +145,7 @@ function get_crp( $args = array() ) {
 			 *
 			 * @param	int	$result->ID	ID of the post
 			 */
-			$resultid = apply_filters( 'crp_post_id', $result->ID );
+			$resultid = apply_filters( 'crp_post_id', $el_result['_source']['post_id'] );
 
 			$result = get_post( $resultid );	// Let's get the Post using the ID
 
@@ -488,6 +493,95 @@ function get_crp_posts_id( $args = array() ) {
 	return apply_filters( 'get_crp_posts_id', $results );
 }
 
+
+function get_elastic_crp_posts( $args = array() )
+{
+
+    global $post;
+
+    // Are we matching only the title or the post content as well?
+    $match_fields = array(
+        'post_title',
+    );
+
+    $match_fields_content = array(
+        $post->post_title,
+    );
+
+    if ($args['match_content']) {
+
+        $match_fields[] = 'post_content';
+        $match_fields_content[] = crp_excerpt($post->ID, $args['match_content_words'], false);
+    }
+
+    // Limit the related posts by time
+    $current_time = current_time('timestamp', 0);
+    $from_date = $current_time - ($args['daily_range'] * DAY_IN_SECONDS);
+    $from_date = gmdate('Y-m-d H:i:s', $from_date);
+
+    $limit = ( $args['strict_limit'] ) ? $args['limit'] : ( $args['limit'] * 3 );
+
+    /*$results = new WP_Query(array(
+        'ep_integrate' => true,
+        's' => $post->post_title,
+        'posts_per_page' => $limit,
+        'post__not_in' => array($post->ID),
+        /*
+        'search_fields' => array(
+            'post_title',
+
+        ),
+        'post__not_in' => array($post->ID),
+        'date_query' => array(
+            array(
+                'column' => 'post_date',
+                'after' => $from_date,
+            ),
+            'inclusive' => true,
+        ),
+    ));*/
+
+    $clientBuilder = Elasticsearch\ClientBuilder::create();
+    $clientBuilder->setHosts(array('http://127.0.0.1:9200'));
+    $client = $clientBuilder->build();
+
+    $params = [
+        'index' => ep_get_index_name(),
+        'type' => 'post',
+        'body' => [
+            '_source' => 'post_id',
+
+            'query' => [
+
+                'filtered' => [
+
+                    'filter' => [
+                        'limit' => ['value' => $limit],
+                    ],
+
+                    'query' => [
+                        'bool' => [
+                            'must' => [
+                                ['match' => ['post_title' => $post->post_title]],
+                                ['match' => ['post_content' => $post->post_content]]
+                                ]
+                            ],
+                            'must_not'  => [
+                                [['post_id' => $post->ID]]
+                            ]
+                        ]
+                ]
+
+            ]
+        ]
+    ];
+
+    $response = $client->search($params);
+
+    $results = $response['hits']['hits'];
+
+    return $results;
+}
 
 /**
  * Content function with user defined filter.

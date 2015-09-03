@@ -521,60 +521,51 @@ function get_elastic_crp_posts( $args = array() )
 
     $limit = ( $args['strict_limit'] ) ? $args['limit'] : ( $args['limit'] * 3 );
 
-    /*$results = new WP_Query(array(
-        'ep_integrate' => true,
-        's' => $post->post_title,
-        'posts_per_page' => $limit,
-        'post__not_in' => array($post->ID),
-        /*
-        'search_fields' => array(
-            'post_title',
-
-        ),
-        'post__not_in' => array($post->ID),
-        'date_query' => array(
-            array(
-                'column' => 'post_date',
-                'after' => $from_date,
-            ),
-            'inclusive' => true,
-        ),
-    ));*/
-
     $clientBuilder = Elasticsearch\ClientBuilder::create();
     $clientBuilder->setHosts(array('http://127.0.0.1:9200'));
     $client = $clientBuilder->build();
 
-    $params = [
-        'index' => ep_get_index_name(),
-        'type' => 'post',
-        'body' => [
-            '_source' => 'post_id',
+	require_once plugin_dir_path( __FILE__ ) . 'includes/StopWords.php';
 
-            'query' => [
+	$stop_words = new StopWords();
 
-                'filtered' => [
+	$search_query = $stop_words->stripStopWords($post->title. ' '.$post->post_content);
 
-                    'filter' => [
-                        'limit' => ['value' => $limit],
-                    ],
+	$params = [
+		'index' => ep_get_index_name(),
+		'type' => 'post',
+		'body' =>  [
+			'_source' => 'post_id',
+			'query' => [
+				'more_like_this' => [
+					"fields" => ["post_title", "post_content"],
+					"like_text" => $search_query,
+					"min_term_freq" => 4,
+					"max_query_terms" => 50
+				],
+			],
+			'filter' => [
+				"bool" => [
+					"should" => [
+						'range' => [
+							'post_date' => [
+								'from' => $from_date
+							]
+						]
+					],
+					'must_not' => [
+							'term' => ["post.post_id" => $post->ID]
+					]
 
-                    'query' => [
-                        'bool' => [
-                            'must' => [
-                                ['match' => ['post_title' => $post->post_title]],
-                                ['match' => ['post_content' => $post->post_content]]
-                                ]
-                            ],
-                            'must_not'  => [
-                                [['post_id' => $post->ID]]
-                            ]
-                        ]
-                ]
+				]
+			],
+			'from' => 0,
+			'size' => $limit
+		]
 
-            ]
-        ]
-    ];
+	];
+
+	//$ret = json_encode($params['body']);
 
     $response = $client->search($params);
 

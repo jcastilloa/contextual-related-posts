@@ -1,6 +1,8 @@
+/* */
+
+
 .crp_related {
   clear: both;
-  margin: 10px 0;
 }
 .crp_related h3 {
   margin: 0 !important;
@@ -18,9 +20,9 @@
   text-align: center;
 }
 .crp_related li {
-  margin: 5px !important;
+  margin: 0px !important;
   border: 1px solid #ddd;
-  padding: 6px;
+  padding: 3px;
 }
 .crp_related li:hover {
   background: #eee;
@@ -44,7 +46,8 @@
   bottom: 6px;
   left: 6px;
   padding: 3px;
-/*  width: 144px;   = 150px - (3px * 2) */
+  margin-right: 6px;
+  /*  width: 144px;   = 150px - (3px * 2) */
   color: #fff;
   font-size: .9em;
   text-shadow: #000 .1em .1em .2em;
@@ -61,11 +64,17 @@
   -webkit-box-shadow: 0 1px 2px rgba(0,0,0,.4);
   -moz-box-shadow: 0 1px 2px rgba(0,0,0,.4);
   box-shadow: 0 1px 2px rgba(0,0,0,.4);
-  -webkit-border-radius: 7px;
-  -moz-border-radius: 7px;
-  border-radius: 7px;
 }
 
 .crp_clear {
-	clear: both;
+  clear: both;
+}
+
+div#crp_related ul li {
+  margin-top: 10px!important;
+  padding: 3px;
+}
+
+#crp_related {
+  margin-bottom: 20px;
 }

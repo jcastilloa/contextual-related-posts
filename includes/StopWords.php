@@ -59,7 +59,10 @@ class StopWords {
         'éstas',
         'aquél',
         'aquéllos',
-        'aquéllas'
+        'aquéllas',
+        'uno',
+        'una',
+        'un'
 
     );
 
@@ -68,7 +71,15 @@ class StopWords {
         'euros',
         '€',
         'año',
-        'años'
+        'años',
+        'si',
+        'no',
+        'sí',
+        'que',
+        'hoy',
+        'ayer',
+        'es',
+        'decir'
     );
 
     private $stop_words;
@@ -88,10 +99,14 @@ class StopWords {
         //strip numbers
         $text = preg_replace('/[0-9]+/', '', $text);
 
-        $text_array = explode(" ", $text);
+        $text = strip_tags($text);
+
+        $text_array = explode(" ", strtolower($text));
 
         //strip stop words
         $filtered_array = array_diff($text_array, $this->stop_words);
+
+        $words = array_count_values($filtered_array);
 
         return implode(' ', $filtered_array);
     }

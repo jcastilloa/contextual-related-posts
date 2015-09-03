@@ -114,13 +114,8 @@ function get_crp( $args = array() ) {
 		}
 	}
 
-	$exclude_categories = explode( ',', $args['exclude_categories'] );
-
-	// Retrieve the list of posts
-	/*$results = get_crp_posts_id( array_merge( $args, array(
-		'postid' => $post->ID,
-		'strict_limit' => TRUE,
-	) ) );*/
+	//TODO implementar categorías a excluir
+	//$exclude_categories = explode( ',', $args['exclude_categories'] );
 
     $results = get_elastic_crp_posts( array_merge( $args, array(
         'postid' => $post->ID,
@@ -224,276 +219,6 @@ function get_crp( $args = array() ) {
 	return apply_filters( 'get_crp', $output, $args );
 }
 
-
-/**
- * Fetch related posts IDs.
- *
- * @since 1.9
- *
- * @param array $args
- * @return object $results
- */
-function get_crp_posts_id( $args = array() ) {
-	global $wpdb, $post, $crp_settings;
-
-	// Initialise some variables
-	$fields = '';
-	$where = '';
-	$join = '';
-	$groupby = '';
-	$orderby = '';
-	$having = '';
-	$limits = '';
-	$match_fields = '';
-
-	$defaults = array(
-		'postid' => FALSE,
-		'strict_limit' => TRUE,
-	);
-	$defaults = array_merge( $defaults, $crp_settings );
-
-	// Parse incoming $args into an array and merge it with $defaults
-	$args = wp_parse_args( $args, $defaults );
-
-	// Fix the thumb size in case it is missing
-	$crp_thumb_size = crp_get_all_image_sizes( $args['thumb_size'] );
-
-	if ( isset( $crp_thumb_size['width'] ) ) {
-		$thumb_width = $crp_thumb_size['width'];
-		$thumb_height = $crp_thumb_size['height'];
-	}
-
-	if ( empty( $thumb_width ) ) {
-		$thumb_width = $crp_settings['thumb_width'];
-	}
-
-	if ( empty( $thumb_height ) ) {
-		$thumb_height = $crp_settings['thumb_height'];
-	}
-
-	$post = ( empty( $args['postid'] ) ) ? $post : get_post( $args['postid'] );
-
-	$limit = ( $args['strict_limit'] ) ? $args['limit'] : ( $args['limit'] * 3 );
-
-	parse_str( $args['post_types'], $post_types );	// Save post types in $post_types variable
-
-	/**
-	 * Filter the post_type clause of the query.
-	 *
-	 * @since 2.2.0
-	 *
-	 * @param array  $post_types  Array of post types to filter by
-	 * @param int    $post->ID    Post ID
-	 */
-	$post_types = apply_filters( 'crp_posts_post_types', $post_types, $post->ID );
-
-	// Are we matching only the title or the post content as well?
-	$match_fields = array(
-		'post_title',
-	);
-
-	$match_fields_content = array(
-		$post->post_title,
-	);
-
-	if( $args['match_content'] ) {
-
-		$match_fields[] = 'post_content';
-		$match_fields_content[] = crp_excerpt( $post->ID, $args['match_content_words'], false );
-	}
-
-	/**
-	 * Filter the fields that are to be matched.
-	 *
-	 * @since	2.2.0
-	 *
-	 * @param array   $match_fields	Array of fields to be matched
-	 * @param int	   $post->ID	Post ID
-	 */
-	$match_fields = apply_filters( 'crp_posts_match_fields', $match_fields, $post->ID );
-
-	/**
-	 * Filter the content of the fields that are to be matched.
-	 *
-	 * @since	2.2.0
-	 *
-	 * @param array	$match_fields_content	Array of content of fields to be matched
-	 * @param int	$post->ID	Post ID
-	 */
-	$match_fields_content = apply_filters( 'crp_posts_match_fields_content', $match_fields_content, $post->ID );
-
-	// Convert our arrays into their corresponding strings after they have been filtered
-	$match_fields = implode( ",", $match_fields );
-	$stuff = implode( " ", $match_fields_content );
-
-	// Make sure the post is not from the future
-	$time_difference = get_option( 'gmt_offset' );
-	$now = gmdate( "Y-m-d H:i:s", ( time() + ( $time_difference * 3600 ) ) );
-
-	// Limit the related posts by time
-	$current_time = current_time( 'timestamp', 0 );
-	$from_date = $current_time - ( $args['daily_range'] * DAY_IN_SECONDS );
-	$from_date = gmdate( 'Y-m-d H:i:s' , $from_date );
-
-	// Create the SQL query to fetch the related posts from the database
-	if ( ( is_int( $post->ID ) ) && ( '' != $stuff ) ) {
-
-		// Fields to return
-		$fields = " $wpdb->posts.ID ";
-
-		// Create the base MATCH clause
-		$match = $wpdb->prepare( " AND MATCH (" . $match_fields . ") AGAINST ('%s') ", $stuff );	// FULLTEXT matching algorithm
-
-		/**
-		 * Filter the MATCH clause of the query.
-		 *
-		 * @since	2.1.0
-		 *
-		 * @param string   $match  		The MATCH section of the WHERE clause of the query
-		 * @param string   $stuff  		String to match fulltext with
-		 * @param int	   $post->ID	Post ID
-		 */
-		$match = apply_filters( 'crp_posts_match', $match, $stuff, $post->ID );
-
-		// Create the maximum date limit
-		$now_clause = $wpdb->prepare( " AND $wpdb->posts.post_date < '%s' ", $now );		// Show posts before today
-
-		/**
-		 * Filter the Maximum date clause of the query.
-		 *
-		 * @since	2.1.0
-		 *
-		 * @param string   $now_clause  The Maximum date of the WHERE clause of the query.
-		 * @param int	   $post->ID	Post ID
-		 */
-		$now_clause = apply_filters( 'crp_posts_now_date', $now_clause, $post->ID );
-
-		// Create the minimum date limit
-		$from_clause = ( 0 == $args['daily_range'] ) ? '' : $wpdb->prepare( " AND $wpdb->posts.post_date >= '%s' ", $from_date );	// Show posts after the date specified
-
-		/**
-		 * Filter the Maximum date clause of the query.
-		 *
-		 * @since	2.1.0
-		 *
-		 * @param string   $from_clause  The Minimum date of the WHERE clause of the query.
-		 * @param int	   $post->ID	Post ID
-		 */
-		$from_clause = apply_filters( 'crp_posts_from_date', $from_clause, $post->ID );
-
-		// Create the base WHERE clause
-		$where = $match;
-		$where .= $now_clause;
-		$where .= $from_clause;
-		$where .= " AND $wpdb->posts.post_status = 'publish' ";					// Only show published posts
-		$where .= $wpdb->prepare( " AND $wpdb->posts.ID != %d ", $post->ID );	// Show posts after the date specified
-		if ( '' != $args['exclude_post_ids'] ) {
-			$where .= " AND $wpdb->posts.ID NOT IN (" . $args['exclude_post_ids'] . ") ";
-		}
-		$where .= " AND $wpdb->posts.post_type IN ('" . join( "', '", $post_types ) . "') ";	// Array of post types
-
-		// Create the base LIMITS clause
-		$limits .= $wpdb->prepare( " LIMIT %d ", $limit );
-
-		/**
-		 * Filter the SELECT clause of the query.
-		 *
-		 * @since	2.0.0
-		 *
-		 * @param string   $fields  The SELECT clause of the query.
-		 * @param int	   $post->ID	Post ID
-		 */
-		$fields = apply_filters( 'crp_posts_fields', $fields, $post->ID );
-
-		/**
-		 * Filter the JOIN clause of the query.
-		 *
-		 * @since	2.0.0
-		 *
-		 * @param string   $join  The JOIN clause of the query.
-		 * @param int	   $post->ID	Post ID
-		 */
- 		$join = apply_filters( 'crp_posts_join', $join, $post->ID );
-
-		/**
-		 * Filter the WHERE clause of the query.
-		 *
-		 * @since	2.0.0
-		 *
-		 * @param string   $where  The WHERE clause of the query.
-		 * @param int	   $post->ID	Post ID
-		 */
-		$where = apply_filters( 'crp_posts_where', $where, $post->ID );
-
-		/**
-		 * Filter the GROUP BY clause of the query.
-		 *
-		 * @since	2.0.0
-		 *
-		 * @param string   $groupby  The GROUP BY clause of the query.
-		 * @param int	   $post->ID	Post ID
-		 */
-		$groupby = apply_filters( 'crp_posts_groupby', $groupby, $post->ID );
-
-		/**
-		 * Filter the HAVING clause of the query.
-		 *
-		 * @since	2.2.0
-		 *
-		 * @param string  $having  The HAVING clause of the query.
-		 * @param int	    $post->ID	Post ID
-		 */
-		$having = apply_filters( 'crp_posts_having', $having, $post->ID );
-
-		/**
-		 * Filter the ORDER BY clause of the query.
-		 *
-		 * @since	2.0.0
-		 *
-		 * @param string   $orderby  The ORDER BY clause of the query.
-		 * @param int	   $post->ID	Post ID
-		 */
-		$orderby = apply_filters( 'crp_posts_orderby', $orderby, $post->ID );
-
-		/**
-		 * Filter the LIMIT clause of the query.
-		 *
-		 * @since	2.0.0
-		 *
-		 * @param string   $limits  The LIMIT clause of the query.
-		 * @param int	   $post->ID	Post ID
-		 */
-		$limits = apply_filters( 'crp_posts_limits', $limits, $post->ID );
-
-		if ( ! empty( $groupby ) ) {
-			$groupby = 'GROUP BY ' . $groupby;
-		}
-
-		if ( ! empty( $having ) ) {
-			$having = 'HAVING ' . $having;
-		}
-
-		if ( !empty( $orderby ) ) {
-			$orderby = 'ORDER BY ' . $orderby;
-		}
-
-		$sql = "SELECT DISTINCT $fields FROM $wpdb->posts $join WHERE 1=1 $where $groupby $having $orderby $limits";
-		$results = $wpdb->get_results( $sql );
-	} else {
-		$results = false;
-	}
-
-	/**
-	 * Filter object containing the post IDs.
-	 *
-	 * @since	1.9
-	 *
-	 * @param 	object   $results  Object containing the related post IDs
-	 */
-	return apply_filters( 'get_crp_posts_id', $results );
-}
-
-
 function get_elastic_crp_posts( $args = array() )
 {
 
@@ -521,15 +246,18 @@ function get_elastic_crp_posts( $args = array() )
 
     $limit = ( $args['strict_limit'] ) ? $args['limit'] : ( $args['limit'] * 3 );
 
-    $clientBuilder = Elasticsearch\ClientBuilder::create();
+
+	$client = \Grupoadslzone\Singletons\ElasticSearchClient::i();
+
+    /*$clientBuilder = Elasticsearch\ClientBuilder::create();
     $clientBuilder->setHosts(array('http://127.0.0.1:9200'));
-    $client = $clientBuilder->build();
+    $client = $clientBuilder->build();*/
 
-	require_once plugin_dir_path( __FILE__ ) . 'includes/StopWords.php';
 
-	$stop_words = new StopWords();
+	require_once plugin_dir_path( __FILE__ ) . 'includes/SearchQuery.php';
 
-	$search_query = $stop_words->stripStopWords($post->title. ' '.$post->post_content);
+	$search_query = new SearchQuery();
+	$search_query->setParamsByWPPost($post);
 
 	$params = [
 		'index' => ep_get_index_name(),
@@ -538,10 +266,14 @@ function get_elastic_crp_posts( $args = array() )
 			'_source' => 'post_id',
 			'query' => [
 				'more_like_this' => [
-					"fields" => ["post_title", "post_content"],
-					"like_text" => $search_query,
-					"min_term_freq" => 4,
-					"max_query_terms" => 50
+					"fields" => $search_query->getFields(),
+					"like_text" => $search_query->getSearchQuery(),
+					"min_term_freq" => $search_query->getMinTermFreq(),
+					"max_query_terms" => $search_query->getMaxQueryTerms(),
+					"min_word_length" => 2,
+					"minimum_should_match" => $search_query->getMinimumShouldMatch(),
+					"boost" => 9,
+					"boost_terms" => 4
 				],
 			],
 			'filter' => [
@@ -572,6 +304,19 @@ function get_elastic_crp_posts( $args = array() )
     $results = $response['hits']['hits'];
 
     return $results;
+}
+
+/**
+ * @param $terms
+ * @return array
+ */
+function get_terms_name($terms)
+{
+	$tags = array();
+	foreach ($terms as $term) {
+		$tags[] = $term->name;
+	}
+	return $tags;
 }
 
 /**
@@ -1123,4 +868,5 @@ if ( is_admin() || strstr( $_SERVER['PHP_SELF'], 'wp-admin/' ) ) {
  *----------------------------------------------------------------------------*/
 
 require_once( plugin_dir_path( __FILE__ ) . 'includes/deprecated.php' );
+
 
